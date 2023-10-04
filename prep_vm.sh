@@ -54,4 +54,4 @@ sudo service apache2 restart
 
 curl "${UPDATE_SCRIPT_URL}" | sudo tee /usr/bin/update_apache_ssl_info.sh
 sudo chmod +x /usr/bin/update_apache_ssl_info.sh
-echo "*/10 * * * * sudo /bin/bash /usr/bin/update_apache_ssl_info.sh ${DOMAIN_NAME}" >> /etc/crontab
+echo "*/10 * * * * sudo /bin/bash /usr/bin/update_apache_ssl_info.sh" | sudo tee -a /etc/crontab
