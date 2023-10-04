@@ -12,8 +12,8 @@ fi
 REAL_IP=$(curl 'https://api.ipify.org')
 
 if [[ "$REAL_IP" == "$LAST_REAL_IP" ]]; then
-  sed -i "s/\(RewriteRule (\.\*) \?\)[^%]\+\(%{REQUEST_URI}\)/\1${DOMAIN_NAME}\2/" /etc/apache2/sites-available/000-default.conf
-  sed -i "s/\(RewriteRule (\.\*) \?\)[^%]\+\(%{REQUEST_URI}\)/\1${DOMAIN_NAME}\2/" /etc/apache2/sites-available/000-default-le-ssl.conf
+  sed -i "s/\(RewriteRule (\.\*) \?\)[^%]\+\(%{REQUEST_URI}\)/\1 ${DOMAIN_NAME}\2/" /etc/apache2/sites-available/000-default.conf
+  sed -i "s/\(RewriteRule (\.\*) \?\)[^%]\+\(%{REQUEST_URI}\)/\1 ${DOMAIN_NAME}\2/" /etc/apache2/sites-available/000-default-le-ssl.conf
   sed -i "s/\(SSLCertificateFile \/etc\/letsencrypt\/live\/\)[^\/]\+\(\/fullchain.pem\)/\1${DOMAIN_NAME}\2/" /etc/apache2/sites-available/000-default-le-ssl.conf
   sed -i "s/\(SSLCertificateKeyFile \/etc\/letsencrypt\/live\/\)[^\/]\+\(\/privkey.pem\)/\1${DOMAIN_NAME}\2/" /etc/apache2/sites-available/000-default-le-ssl.conf
   sed -i "s/\(ServerName \)[0-9]\{0,3\}\.[0-9]\{0,3\}\.[0-9]\{0,3\}\.[0-9]\{0,3\}/\1${REAL_IP}/" /etc/apache2/sites-available/000-default-le-ssl.conf
