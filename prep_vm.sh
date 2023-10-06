@@ -1,57 +1,85 @@
 #!/bin/bash
 
 DOMAIN_NAME=$1
-REAL_IP=$2
+REAL_SERVER_IP=$2
 ADMIN_EMAIL=$3
-UPDATE_SCRIPT_URL=$4
+NO_IP_USER=$4
+NO_IP_PASS=$5
+NO_IP_DOMAIN=$6
+ZEROTIER_NETWORK=$7
 
-sudo apt-get -y install apache2 snapd curl
-sudo a2enmod proxy proxy_http proxy_balancer lbmethod_byrequests
+sudo apt-get -y install nginx snapd curl wget
 sudo snap install --classic certbot
 sudo ln -s /snap/bin/certbot /usr/bin/certbot
-sudo certbot --apache
+certbot --non-interactive \
+    --agree-tos \
+    --no-eff-email \
+    --no-redirect \
+    --email "$ADMIN_EMAIL" \
+    --domains "$DOMAIN_NAME" \
+    --nginx
 
-cat <<EOF | sudo tee /etc/apache2/sites-available/000-default.conf
-<VirtualHost *:80>
-RewriteEngine On
-RewriteCond %{HTTPS} off
-RewriteRule (.*) ${DOMAIN_NAME}%{REQUEST_URI}
-</VirtualHost>
+wget https://dmej8g5cpdyqd.cloudfront.net/downloads/noip-duc_3.0.0-beta.7.tar.gz
+tar xf noip-duc_3.0.0-beta.7.tar.gz
+cd noip-duc_3.0.0-beta.7/binaries && sudo apt install ./noip-duc_3.0.0-beta.7_amd64.deb
+
+cat <<EOF | sudo tee /etc/default/noip-duc
+NOIP_USERNAME=${NO_IP_USER}
+NOIP_PASSWORD=${NO_IP_PASS}
+NOIP_HOSTNAMES=${NO_IP_DOMAIN}
 EOF
 
-cat <<EOF | sudo tee /etc/apache2/sites-available/000-default-le-ssl.conf
-<IfModule mod_ssl.c>
+sudo systemctl daemon-reload
+sudo systemctl enable noip-duc
+sudo systemctl start noip-duc
 
-<VirtualHost *:443>
-  ServerName ${REAL_IP}
-  RewriteEngine On
-  RewriteCond %{HTTPS} on
-  RewriteRule (.*) ${DOMAIN_NAME}%{REQUEST_URI}
-  SSLCertificateFile /etc/letsencrypt/live/${DOMAIN_NAME}/fullchain.pem
-  SSLCertificateKeyFile /etc/letsencrypt/live/${DOMAIN_NAME}/privkey.pem
-</VirtualHost>
+cat <<EOF | sudo tee /etc/nginx/sites-available/default
+server {
+    listen 80 default_server;
+    listen [::]:80 default_server;
 
-<VirtualHost *:443>
-  ServerAdmin ${ADMIN_EMAIL}
-  ErrorLog ${APACHE_LOG_DIR}/error.log
-  CustomLog ${APACHE_LOG_DIR}/access.log combined
-  ServerName ${DOMAIN_NAME}
-  SSLCertificateFile /etc/letsencrypt/live/${DOMAIN_NAME}/fullchain.pem
-  SSLCertificateKeyFile /etc/letsencrypt/live/${DOMAIN_NAME}/privkey.pem
-  Include /etc/letsencrypt/options-ssl-apache.conf
+    #root /var/www/html;
 
-  ProxyPreserveHost On
+    # Add index.php to the list if you are using PHP
+    index index.html index.htm index.nginx-debian.html;
 
-  ProxyPass /service1 http://192.168.13.5:5555/service1
-  ProxyPassReverse /service1 http://192.168.13.5:5555/service1
-  ProxyPass / http://192.168.13.5:5555/
-  ProxyPassReverse / http://192.168.13.5:5555/
-</VirtualHost>
-</IfModule>
+    server_name _;
+
+    location / {
+            # First attempt to serve request as file, then
+            # as directory, then fall back to displaying a 404.
+            try_files \$uri \$uri/ =404;
+    }
+}
+
+server {
+    listen 80 ;
+    listen [::]:80 ;
+
+    #root /var/www/html;
+    #index index.html index.htm index.nginx-debian.html;
+
+    server_name ${DOMAIN_NAME}; # managed by Certbot
+
+    listen [::]:443 ssl ipv6only=on; # managed by Certbot
+    listen 443 ssl; # managed by Certbot
+    ssl_certificate /etc/letsencrypt/live/${DOMAIN_NAME}/fullchain.pem; # managed by Certbot
+    ssl_certificate_key /etc/letsencrypt/live/${DOMAIN_NAME}/privkey.pem; # managed by Certbot
+    include /etc/letsencrypt/options-ssl-nginx.conf; # managed by Certbot
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem; # managed by Certbot
+
+    location / {
+        proxy_pass http://${REAL_SERVER_IP}:46600;
+    }
+
+    location ~ ^/epr(.*)$ {
+        proxy_pass http://${REAL_SERVER_IP}:46603/epr$1;
+    }
+}
 EOF
 
-sudo service apache2 restart
+sudo systemctl restart nginx
 
-curl "${UPDATE_SCRIPT_URL}" | sudo tee /usr/bin/update_apache_ssl_info.sh
-sudo chmod +x /usr/bin/update_apache_ssl_info.sh
-echo "*/10 * * * * sudo /bin/bash /usr/bin/update_apache_ssl_info.sh" | sudo tee -a /etc/crontab
+curl -s 'https://raw.githubusercontent.com/zerotier/ZeroTierOne/master/doc/contact%40zerotier.com.gpg' | gpg --import && \
+if z=$(curl -s 'https://install.zerotier.com/' | gpg); then echo "$z" | sudo bash; fi
+sudo zerotier-cli join "${ZEROTIER_NETWORK}"
